@@ -3198,7 +3198,8 @@ function renderMemberView(){
       <div class="cv-stat-box"><div class="cv-stat-lbl">Defesa</div><div class="cv-stat-val" style="color:#8080e0;">${mySheet.ca||0}</div></div>
       <div class="cv-stat-box"><div class="cv-stat-lbl">Armadura</div><div class="cv-stat-val" style="color:#80e0e0;">${mySheet.ar||0}</div></div>
     </div>
-    <div style="font-size:.75rem;color:#505080;padding:6px 0;margin-bottom:12px;">${mySheet.charName||'?'} · ${mySheet.raca||'?'} · ${mySheet.charClass||'?'} · Nv${mySheet.level||1}</div>`:
+    <div style="font-size:.75rem;color:#505080;padding:6px 0;margin-bottom:12px;">${mySheet.charName||'?'} · ${mySheet.raca||'?'} · ${mySheet.charClass||'?'} · Nv${mySheet.level||1}</div>
+    <button class="cv-btn cv-btn-blue" onclick="cvViewSheet('${_currentUser?.uid}')" style="width:100%;padding:10px;font-size:.73rem;margin-bottom:8px;"><i class="fas fa-eye"></i> VER FICHA COMPLETA DA CAMPANHA</button>`:
     '<div class="cv-alert cv-alert-warn" style="margin-bottom:12px;"><i class="fas fa-exclamation-triangle"></i> Você ainda não enviou sua ficha para esta campanha.</div>'}
     <button class="cv-btn cv-btn-purple" onclick="cvSendMySheet()" style="width:100%;padding:11px;font-size:.75rem;"><i class="fas fa-paper-plane"></i> ${mySheet?'ATUALIZAR FICHA':'ENVIAR FICHA ATUAL'}</button>
     <div id="cv-sheet-send-result" style="margin-top:10px;"></div>
