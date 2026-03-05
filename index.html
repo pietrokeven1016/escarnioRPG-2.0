@@ -1536,6 +1536,7 @@ circulos: '2' },
 
  async function saveCurrentCharacter() {
    if (window._ldvSwitchingAccount) { console.warn('[SAVE] BLOQUEADO - switching account'); return; }
+   if (_masterViewActive) { console.warn('[SAVE] BLOQUEADO - modo mestre ativo'); return; }
    const state = characters[currentId];
    if (!state) { console.warn('[SAVE] BLOQUEADO - state null, currentId=', currentId); return; }
 
@@ -2919,6 +2920,16 @@ async function fbSendSheet(code,sheetData){
     return{success:true};
   }catch(e){return{error:e.message};}
 }
+
+// Mestre salva alterações na ficha de outro jogador
+async function fbMasterSaveSheet(code, playerUid, sheetData){
+  if(!_fbConfigured||!_currentUser)return{error:'not_auth'};
+  try{
+    const data={...sheetData, updatedAt:Date.now(), updatedByMaster:_currentUser.uid};
+    await _db.collection('campaigns').doc(code).collection('sheets').doc(playerUid).set(data,{merge:true});
+    return{success:true};
+  }catch(e){return{error:e.message};}
+}
 async function fbGetSheet(code,uid){
   if(!_fbConfigured)return null;
   try{const doc=await _db.collection('campaigns').doc(code).collection('sheets').doc(uid).get();return doc.exists?doc.data():null;}
@@ -3350,21 +3361,20 @@ function fsvClose(){
 // Estado do modo mestre (visualização de ficha de outro jogador)
 let _masterViewActive = false;
 let _masterViewReturnCode = null;
+let _masterViewPlayerUid = null; // UID do jogador sendo visualizado
 
 function fsvOpenEdit(uid){
   fsvClose();
   const isOwner = uid===(_currentUser&&_currentUser.uid);
   if(isOwner){
-    // Dono: vai para a tela de fichas para editar a própria ficha
     document.getElementById('ldv-camp-view').classList.remove('show');
     showSlots();
   } else if(_cvIsMaster){
-    // Mestre: carrega a ficha do jogador no main-container em modo somente leitura
     const s = _cvSheets[uid];
     if(!s){campToast('Ficha não disponível.','wn');return;}
     _masterViewActive = true;
     _masterViewReturnCode = _cvCode;
-    // Monta um state temporário a partir dos dados enviados pelo jogador
+    _masterViewPlayerUid = uid;
     const t = s.totals||{};
     const tempState = {
       name: s.charName||'Sem Nome', class: s.charClass||'Nenhuma',
@@ -3378,73 +3388,127 @@ function fsvOpenEdit(uid){
       textData: { itens: s.itens||'', rituais: s.rituais||'', pactos:'', curse:'', maldição:'' },
       fotoPerfil: s.fotoPerfil||null
     };
-    // Salva o ID atual para restaurar depois
     const prevId = currentId;
     window._mvPrevChars = JSON.parse(JSON.stringify(characters));
     window._mvPrevId = prevId;
-    // Injeta state temporário
     const tempId = '__master_view__';
     characters[tempId] = tempState;
     currentId = tempId;
-    // Esconde campanha, mostra ficha
     document.getElementById('ldv-camp-view').classList.remove('show');
     loadCharacter(tempId);
     showSheet();
-    // Aplica modo somente leitura
     _applyMasterViewMode(true, s.charName||'Sem Nome');
   }
 }
 
 function _applyMasterViewMode(on, charName){
   const container = document.getElementById('main-container');
-  if(on){
-    let banner = document.getElementById('master-view-banner');
-    if(!banner){
-      banner = document.createElement('div');
-      banner.id = 'master-view-banner';
-      banner.style.cssText='background:#140a28;border:1px solid #3a1060;border-radius:6px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;';
-      container.insertBefore(banner, container.firstChild);
-    }
-    banner.innerHTML=`
-      <div style="display:flex;align-items:center;gap:10px;">
-        <i class="fas fa-crown" style="color:#a060e0;"></i>
-        <span style="font-size:.72rem;color:#9060c0;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Modo Mestre — Visualizando: <span style="color:#c090f0;">${charName}</span></span>
-      </div>
+  if(!on) return;
+
+  // Banner do modo mestre com botão salvar e voltar
+  let banner = document.getElementById('master-view-banner');
+  if(!banner){
+    banner = document.createElement('div');
+    banner.id = 'master-view-banner';
+    banner.style.cssText='background:#140a28;border:1px solid #3a1060;border-radius:6px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;';
+    container.insertBefore(banner, container.firstChild);
+  }
+  banner.innerHTML=`
+    <div style="display:flex;align-items:center;gap:10px;">
+      <i class="fas fa-crown" style="color:#a060e0;"></i>
+      <span style="font-size:.72rem;color:#9060c0;font-weight:700;text-transform:uppercase;letter-spacing:1px;">
+        Modo Mestre — <span style="color:#c090f0;">${charName}</span>
+      </span>
+      <span style="font-size:.58rem;color:#50305080;border:1px solid #30104060;border-radius:8px;padding:1px 8px;">Nome e Raça bloqueados</span>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button id="mv-save-btn" onclick="_masterSaveSheet()" style="background:#0a220a;border:1px solid #1a5a1a;color:#60d070;padding:5px 14px;border-radius:4px;cursor:pointer;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;white-space:nowrap;display:flex;align-items:center;gap:5px;">
+        <i class="fas fa-save"></i> Salvar Alterações
+      </button>
       <button onclick="_exitMasterView()" style="background:#1a0a30;border:1px solid #3a1060;color:#8050b0;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;white-space:nowrap;">
-        <i class="fas fa-arrow-left"></i> Voltar à Campanha
-      </button>`;
-    // Bloqueia todos os inputs/botões exceto o banner
-    container.querySelectorAll('input,textarea,select,button:not(#master-view-banner button)').forEach(el=>{
-      el.dataset.mvDisabled='1';
-      el.disabled=true;
-    });
-    // Esconde botões de controle desnecessários
-    ['btn-save','btn-new','btn-pdf','btn-campaign','ldv-back-btn','char-selector','btn-ritual'].forEach(id=>{
-      const el=document.getElementById(id);if(el){el.dataset.mvHidden='1';el.style.display='none';}
-    });
+        <i class="fas fa-arrow-left"></i> Voltar
+      </button>
+    </div>`;
+
+  // Bloqueia APENAS nome e raça — o resto fica editável
+  const lockIds = ['char-name', 'raca-display-name', 'raca-icon'];
+  lockIds.forEach(id=>{
+    const el = document.getElementById(id);
+    if(el){ el.dataset.mvLocked='1'; el.style.pointerEvents='none'; el.style.opacity='0.45'; }
+  });
+
+  // Esconde botões de controle que não fazem sentido no modo mestre
+  ['btn-save','btn-new','btn-pdf','btn-campaign','ldv-back-btn','char-selector'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el){el.dataset.mvHidden='1';el.style.display='none';}
+  });
+}
+
+async function _masterSaveSheet(){
+  const s = _cvSheets[_masterViewPlayerUid];
+  if(!s || !_masterViewPlayerUid || !_masterViewReturnCode) return;
+
+  const btn = document.getElementById('mv-save-btn');
+  if(btn){btn.innerHTML='<i class="fas fa-spinner fa-spin"></i> Salvando...';btn.disabled=true;}
+
+  // Lê os valores atuais do DOM (campos habilitados)
+  const hp  = parseInt(document.getElementById('pv-val')?.value)||0;
+  const ca  = parseInt(document.getElementById('ca-display')?.value)||0;
+  const ar  = parseInt(document.getElementById('ar-val')?.value)||0;
+  const circ= parseInt(document.getElementById('circles-val')?.value)||0;
+  const anim= parseInt(document.getElementById('animalia-val')?.value)||0;
+  const lv  = Math.min(parseInt(document.getElementById('char-lv')?.value)||1, 8);
+  const age = parseInt(document.getElementById('char-age')?.value)||0;
+  const itens    = document.getElementById('itens')?.value||'';
+  const rituais  = document.getElementById('rituais')?.value||'';
+  const pactos   = document.getElementById('pactos')?.value||'';
+  const maldição = document.getElementById('maldição-text')?.value||'';
+
+  // Monta o objeto atualizado preservando campos imutáveis (nome, raça)
+  const updated = {
+    ...s,
+    hp, ca, ar, circulos: circ, animalia: anim,
+    level: lv, age,
+    itens, rituais,
+    textData: { itens, rituais, pactos, maldição, curse: s.textData?.curse||'' }
+  };
+
+  const result = await fbMasterSaveSheet(_masterViewReturnCode, _masterViewPlayerUid, updated);
+
+  if(result.error){
+    campToast('Erro ao salvar: '+result.error,'err');
+    if(btn){btn.innerHTML='<i class="fas fa-save"></i> Salvar Alterações';btn.disabled=false;}
+  } else {
+    // Atualiza cache local
+    _cvSheets[_masterViewPlayerUid] = {...updated, updatedAt: Date.now()};
+    campToast('Ficha atualizada com sucesso!','ok');
+    if(btn){btn.innerHTML='<i class="fas fa-check"></i> Salvo!';setTimeout(()=>{if(btn){btn.innerHTML='<i class="fas fa-save"></i> Salvar Alterações';btn.disabled=false;}},2000);}
   }
 }
 
 function _exitMasterView(){
-  // Restaura characters e currentId anteriores
   delete characters['__master_view__'];
   const prevChars = window._mvPrevChars||{};
   const prevId = window._mvPrevId||'default';
   Object.keys(prevChars).forEach(k=>{ characters[k]=prevChars[k]; });
   currentId = prevId;
   _masterViewActive = false;
+  _masterViewPlayerUid = null;
   window._mvPrevChars = null;
   window._mvPrevId = null;
-  // Remove banner e re-habilita inputs
+  // Remove banner
   const banner = document.getElementById('master-view-banner');
   if(banner) banner.remove();
-  const container = document.getElementById('main-container');
-  container.querySelectorAll('[data-mv-disabled]').forEach(el=>{el.disabled=false;delete el.dataset.mvDisabled;});
-  ['btn-save','btn-new','btn-pdf','btn-campaign','ldv-back-btn','char-selector','btn-ritual'].forEach(id=>{
+  // Desbloqueia nome e raça
+  ['char-name','raca-display-name','raca-icon'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el&&el.dataset.mvLocked){el.style.pointerEvents='';el.style.opacity='';delete el.dataset.mvLocked;}
+  });
+  // Restaura botões escondidos
+  ['btn-save','btn-new','btn-pdf','btn-campaign','ldv-back-btn','char-selector'].forEach(id=>{
     const el=document.getElementById(id);
     if(el&&el.dataset.mvHidden){el.style.display='';delete el.dataset.mvHidden;}
   });
-  // Recarrega a ficha do jogador atual e volta para a campanha
   loadCharacter(currentId);
   if(_masterViewReturnCode){
     openCampView(_masterViewReturnCode);
