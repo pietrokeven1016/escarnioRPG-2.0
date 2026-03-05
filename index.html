@@ -3180,6 +3180,22 @@ async function cvDeleteCamp(){
 
 function renderMemberView(){
   const camp=_cvCamp;const members=camp.members||[];const mySheet=_cvSheets[_currentUser?.uid];
+  // Monta seletor de fichas disponíveis
+  const order=getSlotsOrder();
+  const slotOptions=order.map((cid,i)=>{
+    if(!cid||!characters[cid])return'';
+    const st=characters[cid];
+    const photo=st.fotoPerfil?`<img src="${st.fotoPerfil}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;border:1px solid #28286a;flex-shrink:0;" alt="">`:`<div style="width:28px;height:28px;border-radius:50%;background:#10102a;border:1px solid #28286a;display:flex;align-items:center;justify-content:center;font-size:.7rem;flex-shrink:0;">⚔️</div>`;
+    return`<div class="cv-member-row" style="cursor:pointer;margin-bottom:6px;" onclick="cvSendSpecificSheet('${cid}')">
+      ${photo}
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:700;font-size:.82rem;color:#c0c0f0;">${st.name||'Sem Nome'}</div>
+        <div style="font-size:.6rem;color:#30306060;">${st.raca||'—'} · ${st.class||'—'} · Nv${st.level||1}</div>
+      </div>
+      <span style="font-size:.6rem;color:#4060c0;border:1px solid #1a2a5a;border-radius:8px;padding:2px 8px;white-space:nowrap;">Selecionar</span>
+    </div>`;
+  }).filter(Boolean).join('');
+
   document.getElementById('cv-body').innerHTML=`
   <div class="cv-tabs" id="cv-member-tabs">
     <button class="cv-tab active" onclick="cvMemberTab('mysheet',this)">Minha Ficha</button>
@@ -3192,16 +3208,19 @@ function renderMemberView(){
       ${camp.desc?`<div style="font-size:.72rem;color:#404060;margin-top:6px;font-style:italic;">${camp.desc}</div>`:''}
     </div>
     <div class="cv-section-title">Minha Ficha nesta Campanha</div>
-    ${mySheet?`<div class="cv-alert cv-alert-ok" style="margin-bottom:10px;"><i class="fas fa-check-circle"></i> Ficha enviada em ${new Date(mySheet.updatedAt||0).toLocaleString('pt-BR')}</div>
-    <div class="cv-stats-grid">
+    ${mySheet?`
+    <div class="cv-alert cv-alert-ok" style="margin-bottom:10px;"><i class="fas fa-check-circle"></i> Ficha enviada em ${new Date(mySheet.updatedAt||0).toLocaleString('pt-BR')}</div>
+    <div class="cv-stats-grid" style="margin-bottom:10px;">
       <div class="cv-stat-box"><div class="cv-stat-lbl">HP Máx</div><div class="cv-stat-val" style="color:#e08080;">${mySheet.hp||0}</div></div>
       <div class="cv-stat-box"><div class="cv-stat-lbl">Defesa</div><div class="cv-stat-val" style="color:#8080e0;">${mySheet.ca||0}</div></div>
       <div class="cv-stat-box"><div class="cv-stat-lbl">Armadura</div><div class="cv-stat-val" style="color:#80e0e0;">${mySheet.ar||0}</div></div>
     </div>
-    <div style="font-size:.75rem;color:#505080;padding:6px 0;margin-bottom:12px;">${mySheet.charName||'?'} · ${mySheet.raca||'?'} · ${mySheet.charClass||'?'} · Nv${mySheet.level||1}</div>
-    <button class="cv-btn cv-btn-blue" onclick="cvViewSheet('${_currentUser?.uid}')" style="width:100%;padding:10px;font-size:.73rem;margin-bottom:8px;"><i class="fas fa-eye"></i> VER FICHA COMPLETA DA CAMPANHA</button>`:
-    '<div class="cv-alert cv-alert-warn" style="margin-bottom:12px;"><i class="fas fa-exclamation-triangle"></i> Você ainda não enviou sua ficha para esta campanha.</div>'}
-    <button class="cv-btn cv-btn-purple" onclick="cvSendMySheet()" style="width:100%;padding:11px;font-size:.75rem;"><i class="fas fa-paper-plane"></i> ${mySheet?'ATUALIZAR FICHA':'ENVIAR FICHA ATUAL'}</button>
+    <div style="font-size:.75rem;color:#505080;padding:4px 0;margin-bottom:12px;">${mySheet.charName||'?'} · ${mySheet.raca||'?'} · ${mySheet.charClass||'?'} · Nv${mySheet.level||1}</div>
+    <button class="cv-btn cv-btn-blue" onclick="cvOpenOwnerEdit()" style="width:100%;padding:11px;font-size:.73rem;margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:7px;"><i class="fas fa-edit"></i> VER E EDITAR MINHA FICHA DA CAMPANHA</button>
+    `:'<div class="cv-alert cv-alert-warn" style="margin-bottom:12px;"><i class="fas fa-exclamation-triangle"></i> Você ainda não enviou sua ficha para esta campanha.</div>'}
+    <div class="cv-section-title" style="margin-top:16px;">Enviar / Trocar Ficha</div>
+    <div style="font-size:.68rem;color:#30305060;margin-bottom:10px;">Selecione uma das suas fichas para enviar para esta campanha:</div>
+    ${slotOptions||'<div class="cv-alert cv-alert-warn"><i class="fas fa-exclamation-triangle"></i> Nenhuma ficha criada ainda. Vá em Fichas para criar uma.</div>'}
     <div id="cv-sheet-send-result" style="margin-top:10px;"></div>
     <div style="margin-top:24px;padding-top:14px;border-top:1px solid #14143a;">
       <button class="cv-btn cv-btn-red" onclick="cvLeaveCamp()" style="font-size:.65rem;"><i class="fas fa-sign-out-alt"></i> SAIR DA CAMPANHA</button>
@@ -3217,30 +3236,96 @@ function renderMemberView(){
     </div>`;}).join('')}
   </div>`;
 }
+
 function cvMemberTab(id,btn){
   document.querySelectorAll('#cv-member-tabs .cv-tab').forEach(t=>t.classList.remove('active'));
   ['mysheet','members'].forEach(n=>{const el=document.getElementById('cv-pane-'+n);if(el)el.classList.remove('active');});
   btn.classList.add('active');const pane=document.getElementById('cv-pane-'+id);if(pane)pane.classList.add('active');
 }
-async function cvSendMySheet(){
-  const state=characters[currentId];
-  if(!state){campToast('Carregue uma ficha primeiro (seção Fichas).','wn');return;}
-  const getVal=id=>{const el=document.getElementById(id);return el?el.value:'';};
+
+// Envia uma ficha específica escolhida pelo usuário
+async function cvSendSpecificSheet(charId){
+  const state = characters[charId];
+  if(!state){campToast('Ficha não encontrada.','wn');return;}
+  const res = document.getElementById('cv-sheet-send-result');
+  if(res)res.innerHTML='<div class="cv-alert cv-alert-warn"><i class="fas fa-spinner fa-spin"></i> Enviando ficha...</div>';
   const totals={};['con','for','des','int','ins','car'].forEach(k=>{totals[k]=(state.baseAttrs&&state.baseAttrs[k]||0)+(state.bonusAttrs&&state.bonusAttrs[k]||0);});
   const sheet={
     charName:state.name||'',charClass:state.class||'',raca:state.raca||'',level:state.level||1,age:state.age||'',
-    hp:parseInt(getVal('pv-val'))||totals.con*5,ca:parseInt(getVal('ca-display'))||state.baseCa||0,
-    ar:parseInt(getVal('ar-val'))||0,circulos:parseInt(getVal('circles-val'))||0,
-    animalia:state.animalia||0,altura:getVal('char-height'),
+    hp:totals.con*5||0,ca:state.baseCa||0,ar:state.ar||0,circulos:state.circulos||0,
+    animalia:state.animalia||0,altura:state.baseAltura||'',
     totals,ritualStage:state.ritualStage||0,
     itens:(state.textData&&state.textData.itens)||'',rituais:(state.textData&&state.textData.rituais)||'',
     fotoPerfil:state.fotoPerfil||null
   };
-  const res=document.getElementById('cv-sheet-send-result');
-  if(res)res.innerHTML='<div class="cv-alert cv-alert-warn"><i class="fas fa-spinner fa-spin"></i> Enviando ficha...</div>';
   const result=await fbSendSheet(_cvCode,sheet);
   if(result.error){if(res)res.innerHTML=`<div class="cv-alert cv-alert-err">Erro: ${result.error}</div>`;}
-  else{if(res)res.innerHTML='<div class="cv-alert cv-alert-ok"><i class="fas fa-check-circle"></i> Ficha enviada com sucesso!</div>';_cvSheets=await fbGetAllSheets(_cvCode);campToast('Ficha enviada!','ok');setTimeout(()=>renderMemberView(),900);}
+  else{_cvSheets=await fbGetAllSheets(_cvCode);campToast('Ficha enviada!','ok');setTimeout(()=>renderMemberView(),600);}
+}
+
+// Abre a ficha da campanha para edição pelo próprio dono
+function cvOpenOwnerEdit(){
+  const uid = _currentUser&&_currentUser.uid;
+  const s = _cvSheets[uid];
+  if(!s){campToast('Ficha não disponível.','wn');return;}
+  // Reutiliza o mesmo mecanismo do modo mestre, mas sem restrições
+  _masterViewActive = true;
+  _masterViewReturnCode = _cvCode;
+  _masterViewPlayerUid = uid;
+  const t = s.totals||{};
+  const tempState = {
+    name:s.charName||'Sem Nome',class:s.charClass||'Nenhuma',
+    raca:s.raca||'Nenhuma',level:s.level||1,age:s.age||0,
+    abates:0,animalia:s.animalia||0,ar:s.ar||0,
+    ritualStage:s.ritualStage||0,animaliaMax:10,
+    baseAttrs:{con:t.con||0,for:t.for||0,des:t.des||0,int:t.int||0,ins:t.ins||0,car:t.car||0},
+    bonusAttrs:{con:0,for:0,des:0,int:0,ins:0,car:0},
+    circulos:s.circulos||0,baseAltura:1.7,baseCa:s.ca||0,
+    bonusHP:0,bonusCA:0,bonusCirc:0,bonusAR:0,
+    textData:{itens:s.itens||'',rituais:s.rituais||'',pactos:'',curse:'',maldição:''},
+    fotoPerfil:s.fotoPerfil||null
+  };
+  window._mvPrevChars = JSON.parse(JSON.stringify(characters));
+  window._mvPrevId = currentId;
+  const tempId='__master_view__';
+  characters[tempId]=tempState;
+  currentId=tempId;
+  document.getElementById('ldv-camp-view').classList.remove('show');
+  loadCharacter(tempId);
+  showSheet();
+  // Banner sem restrições (dono pode editar tudo)
+  _applyOwnerEditMode(s.charName||'Sem Nome');
+}
+
+function _applyOwnerEditMode(charName){
+  const container=document.getElementById('main-container');
+  let banner=document.getElementById('master-view-banner');
+  if(!banner){
+    banner=document.createElement('div');
+    banner.id='master-view-banner';
+    banner.style.cssText='background:#081a08;border:1px solid #1a5a1a;border-radius:6px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;';
+    container.insertBefore(banner,container.firstChild);
+  }
+  banner.innerHTML=`
+    <div style="display:flex;align-items:center;gap:10px;">
+      <i class="fas fa-user-edit" style="color:#60d070;"></i>
+      <span style="font-size:.72rem;color:#50a060;font-weight:700;text-transform:uppercase;letter-spacing:1px;">
+        Editando Ficha da Campanha — <span style="color:#90e090;">${charName}</span>
+      </span>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button id="mv-save-btn" onclick="_masterSaveSheet()" style="background:#0a220a;border:1px solid #1a5a1a;color:#60d070;padding:5px 14px;border-radius:4px;cursor:pointer;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;white-space:nowrap;display:flex;align-items:center;gap:5px;">
+        <i class="fas fa-save"></i> Salvar Alterações
+      </button>
+      <button onclick="_exitMasterView()" style="background:#0a1a0a;border:1px solid #1a4a1a;color:#408040;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;white-space:nowrap;">
+        <i class="fas fa-arrow-left"></i> Voltar
+      </button>
+    </div>`;
+  // Para o dono: esconde apenas os botões de navegação, sem bloquear nenhum campo
+  ['btn-save','btn-new','btn-pdf','btn-campaign','ldv-back-btn','char-selector'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el){el.dataset.mvHidden='1';el.style.display='none';}
+  });
 }
 async function cvLeaveCamp(){if(!confirm('Sair desta campanha?'))return;await fbLeaveCamp(_cvCode);campToast('Você saiu da campanha.','ok');closeCampView();}
 
@@ -3367,15 +3452,10 @@ let _masterViewPlayerUid = null; // UID do jogador sendo visualizado
 function fsvOpenEdit(uid){
   const isOwner = uid===(_currentUser&&_currentUser.uid);
   if(isOwner){
-    // Dono: mantém o viewer aberto mostrando a ficha da campanha (versão salva pelo mestre)
-    // Só atualiza o badge e remove o botão para evitar loop
-    const badge = document.getElementById('fsv-badge');
-    if(badge){ badge.className='fsv-badge fsv-badge-edit'; badge.innerHTML='<i class="fas fa-user"></i> Sua Ficha na Campanha'; }
-    const editBtnEl = document.querySelector('.fsv-action-btn');
-    if(editBtnEl) editBtnEl.remove();
+    fsvClose();
+    cvOpenOwnerEdit();
     return;
   } else if(_cvIsMaster){
-    fsvClose();
     const s = _cvSheets[uid];
     if(!s){campToast('Ficha não disponível.','wn');return;}
     _masterViewActive = true;
