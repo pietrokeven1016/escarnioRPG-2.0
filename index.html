@@ -3347,19 +3347,118 @@ function fsvClose(){
   document.getElementById('fsv-ov').classList.remove('show');
 }
 
+// Estado do modo mestre (visualização de ficha de outro jogador)
+let _masterViewActive = false;
+let _masterViewReturnCode = null;
+
 function fsvOpenEdit(uid){
   fsvClose();
-  if(uid===(_currentUser&&_currentUser.uid)){
-    // Dono: abre a ficha local para edição
+  const isOwner = uid===(_currentUser&&_currentUser.uid);
+  if(isOwner){
+    // Dono: vai para a tela de fichas para editar a própria ficha
     document.getElementById('ldv-camp-view').classList.remove('show');
     showSlots();
+  } else if(_cvIsMaster){
+    // Mestre: carrega a ficha do jogador no main-container em modo somente leitura
+    const s = _cvSheets[uid];
+    if(!s){campToast('Ficha não disponível.','wn');return;}
+    _masterViewActive = true;
+    _masterViewReturnCode = _cvCode;
+    // Monta um state temporário a partir dos dados enviados pelo jogador
+    const t = s.totals||{};
+    const tempState = {
+      name: s.charName||'Sem Nome', class: s.charClass||'Nenhuma',
+      raca: s.raca||'Nenhuma', level: s.level||1, age: s.age||0,
+      abates: 0, animalia: s.animalia||0, ar: s.ar||0,
+      ritualStage: s.ritualStage||0, animaliaMax: 10,
+      baseAttrs: { con: t.con||0, for: t.for||0, des: t.des||0, int: t.int||0, ins: t.ins||0, car: t.car||0 },
+      bonusAttrs: { con: 0, for: 0, des: 0, int: 0, ins: 0, car: 0 },
+      circulos: s.circulos||0, baseAltura: 1.7, baseCa: s.ca||0,
+      bonusHP: 0, bonusCA: 0, bonusCirc: 0, bonusAR: 0,
+      textData: { itens: s.itens||'', rituais: s.rituais||'', pactos:'', curse:'', maldição:'' },
+      fotoPerfil: s.fotoPerfil||null
+    };
+    // Salva o ID atual para restaurar depois
+    const prevId = currentId;
+    window._mvPrevChars = JSON.parse(JSON.stringify(characters));
+    window._mvPrevId = prevId;
+    // Injeta state temporário
+    const tempId = '__master_view__';
+    characters[tempId] = tempState;
+    currentId = tempId;
+    // Esconde campanha, mostra ficha
+    document.getElementById('ldv-camp-view').classList.remove('show');
+    loadCharacter(tempId);
+    showSheet();
+    // Aplica modo somente leitura
+    _applyMasterViewMode(true, s.charName||'Sem Nome');
   }
-  // Mestre: apenas fecha o viewer e volta para a campanha
+}
+
+function _applyMasterViewMode(on, charName){
+  const container = document.getElementById('main-container');
+  if(on){
+    let banner = document.getElementById('master-view-banner');
+    if(!banner){
+      banner = document.createElement('div');
+      banner.id = 'master-view-banner';
+      banner.style.cssText='background:#140a28;border:1px solid #3a1060;border-radius:6px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;';
+      container.insertBefore(banner, container.firstChild);
+    }
+    banner.innerHTML=`
+      <div style="display:flex;align-items:center;gap:10px;">
+        <i class="fas fa-crown" style="color:#a060e0;"></i>
+        <span style="font-size:.72rem;color:#9060c0;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Modo Mestre — Visualizando: <span style="color:#c090f0;">${charName}</span></span>
+      </div>
+      <button onclick="_exitMasterView()" style="background:#1a0a30;border:1px solid #3a1060;color:#8050b0;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;white-space:nowrap;">
+        <i class="fas fa-arrow-left"></i> Voltar à Campanha
+      </button>`;
+    // Bloqueia todos os inputs/botões exceto o banner
+    container.querySelectorAll('input,textarea,select,button:not(#master-view-banner button)').forEach(el=>{
+      el.dataset.mvDisabled='1';
+      el.disabled=true;
+    });
+    // Esconde botões de controle desnecessários
+    ['btn-save','btn-new','btn-pdf','btn-campaign','ldv-back-btn','char-selector','btn-ritual'].forEach(id=>{
+      const el=document.getElementById(id);if(el){el.dataset.mvHidden='1';el.style.display='none';}
+    });
+  }
+}
+
+function _exitMasterView(){
+  // Restaura characters e currentId anteriores
+  delete characters['__master_view__'];
+  const prevChars = window._mvPrevChars||{};
+  const prevId = window._mvPrevId||'default';
+  Object.keys(prevChars).forEach(k=>{ characters[k]=prevChars[k]; });
+  currentId = prevId;
+  _masterViewActive = false;
+  window._mvPrevChars = null;
+  window._mvPrevId = null;
+  // Remove banner e re-habilita inputs
+  const banner = document.getElementById('master-view-banner');
+  if(banner) banner.remove();
+  const container = document.getElementById('main-container');
+  container.querySelectorAll('[data-mv-disabled]').forEach(el=>{el.disabled=false;delete el.dataset.mvDisabled;});
+  ['btn-save','btn-new','btn-pdf','btn-campaign','ldv-back-btn','char-selector','btn-ritual'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el&&el.dataset.mvHidden){el.style.display='';delete el.dataset.mvHidden;}
+  });
+  // Recarrega a ficha do jogador atual e volta para a campanha
+  loadCharacter(currentId);
+  if(_masterViewReturnCode){
+    openCampView(_masterViewReturnCode);
+  } else {
+    showCamps();
+  }
+  _masterViewReturnCode = null;
 }
 
 // ===== NAVEGAÇÃO COM AUTH =====
 const _origShowLanding = showLanding;
 showLanding = function(){
+  // Limpa modo mestre se ativo
+  if(_masterViewActive){ const b=document.getElementById('master-view-banner');if(b)b.remove(); _masterViewActive=false; }
   _origShowLanding();
   if(_currentUser){const e=document.getElementById('ldv-user-email');if(e)e.textContent=_currentUser.email;}
   document.getElementById('ldv-camp-view').classList.remove('show');
