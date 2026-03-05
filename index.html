@@ -3301,8 +3301,8 @@ async function cvViewSheet(uid){
   const ritualTag=s.ritualStage>0?`<span class="fsv-ritual-tag">⬡ Ritual ${s.ritualStage}</span>`:'';
 
   const editBtn=canEdit?`<button class="fsv-action-btn fsv-btn-edit" onclick="fsvOpenEdit('${uid}')">
-    <i class="fas fa-${isOwner?'edit':'shield-alt'}"></i>
-    ${isOwner?'Abrir Minha Ficha para Edição':'Ver Ficha Completa (Modo Mestre)'}
+    <i class="fas fa-${isOwner?'eye':'crown'}"></i>
+    ${isOwner?'Ver Minha Ficha da Campanha':'Ver Ficha Completa (Modo Mestre)'}
   </button>`:'';
 
   body.innerHTML=`
@@ -3364,21 +3364,17 @@ let _masterViewReturnCode = null;
 let _masterViewPlayerUid = null; // UID do jogador sendo visualizado
 
 function fsvOpenEdit(uid){
-  fsvClose();
   const isOwner = uid===(_currentUser&&_currentUser.uid);
   if(isOwner){
-    // Dono: abre a ficha diretamente, sem passar pela tela de slots
-    fsvClose();
-    document.getElementById('ldv-camp-view').classList.remove('show');
-    // Garante que a ficha atual do jogador está carregada
-    if(currentId && characters[currentId]){
-      loadCharacter(currentId);
-    } else {
-      const firstId = Object.keys(characters).filter(k=>k!=='__master_view__')[0];
-      if(firstId) loadCharacter(firstId);
-    }
-    showSheet();
+    // Dono: mantém o viewer aberto mostrando a ficha da campanha (versão salva pelo mestre)
+    // Só atualiza o badge e remove o botão para evitar loop
+    const badge = document.getElementById('fsv-badge');
+    if(badge){ badge.className='fsv-badge fsv-badge-edit'; badge.innerHTML='<i class="fas fa-user"></i> Sua Ficha na Campanha'; }
+    const editBtnEl = document.querySelector('.fsv-action-btn');
+    if(editBtnEl) editBtnEl.remove();
+    return;
   } else if(_cvIsMaster){
+    fsvClose();
     const s = _cvSheets[uid];
     if(!s){campToast('Ficha não disponível.','wn');return;}
     _masterViewActive = true;
