@@ -3367,8 +3367,17 @@ function fsvOpenEdit(uid){
   fsvClose();
   const isOwner = uid===(_currentUser&&_currentUser.uid);
   if(isOwner){
+    // Dono: abre a ficha diretamente, sem passar pela tela de slots
+    fsvClose();
     document.getElementById('ldv-camp-view').classList.remove('show');
-    showSlots();
+    // Garante que a ficha atual do jogador está carregada
+    if(currentId && characters[currentId]){
+      loadCharacter(currentId);
+    } else {
+      const firstId = Object.keys(characters).filter(k=>k!=='__master_view__')[0];
+      if(firstId) loadCharacter(firstId);
+    }
+    showSheet();
   } else if(_cvIsMaster){
     const s = _cvSheets[uid];
     if(!s){campToast('Ficha não disponível.','wn');return;}
